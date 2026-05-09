@@ -20,13 +20,13 @@ def test_detect_layout_flat_mousou():
 
 def test_find_scripts_archive_terabeppin():
     p = find_scripts_archive(os.path.join(JP, "Tera Beppin"))
-    assert os.path.basename(p) == "sn.ypf"
+    assert os.path.basename(p) == "bn.ypf"
     assert "pac" in p
 
 
 def test_find_scripts_archive_pleaserme():
     p = find_scripts_archive(os.path.join(JP, "Please R Me!"))
-    assert os.path.basename(p) == "sn.ypf"
+    assert os.path.basename(p) == "bn.ypf"
     assert "pac" in p
 
 

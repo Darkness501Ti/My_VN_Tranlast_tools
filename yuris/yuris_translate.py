@@ -69,19 +69,26 @@ def detect_layout(game_dir):
 def find_scripts_archive(game_dir):
     """Locate the YPF that holds .ybn scenario scripts.
 
-    Heuristic: in pac/ layout look for sn.ypf or ysbin.ypf (in that order).
-    In flat layout look for ysbin.ypf at root. Falls back to the largest
-    non-asset YPF (excludes cg/bgm/voice/se/cgsys/op/ed/bn/st/vo).
+    Heuristic:
+    - pac/ layout (Clock Up style): prefer bn.ypf (285 entries in Tera Beppin,
+      225 in Please R Me!, all .ybn), then ysbin.ypf, then sn.ypf as last
+      named fallback.  sn.ypf in Clock Up pac/ contains only .ogg system audio.
+    - flat layout (Mousou Haruna-san style): prefer ysbin.ypf then sn.ypf.
+    Falls back to the largest non-asset YPF when none of the named files exist.
     """
     layout = detect_layout(game_dir)
     search_dir = os.path.join(game_dir, "pac") if layout == "pac" else game_dir
-    for name in ("sn.ypf", "ysbin.ypf"):
+    candidates_ordered = (
+        ("bn.ypf", "ysbin.ypf", "sn.ypf") if layout == "pac"
+        else ("ysbin.ypf", "sn.ypf")
+    )
+    for name in candidates_ordered:
         p = os.path.join(search_dir, name)
         if os.path.isfile(p):
             return p
     # Fallback heuristic
     asset_prefixes = ("cg", "bgm", "voice", "vo", "se", "cgsys",
-                       "op", "ed", "bn", "st", "update")
+                       "op", "ed", "st", "update")
     candidates = []
     for ypf in glob.glob(os.path.join(search_dir, "*.ypf")):
         name = os.path.basename(ypf).lower()
@@ -90,7 +97,7 @@ def find_scripts_archive(game_dir):
     if candidates:
         candidates.sort(key=os.path.getsize, reverse=True)
         return candidates[0]
-    raise FileNotFoundError(f"No script archive (sn.ypf / ysbin.ypf) in {search_dir}")
+    raise FileNotFoundError(f"No script archive (bn.ypf / ysbin.ypf / sn.ypf) in {search_dir}")
 
 
 def find_game_exe(game_dir):
@@ -124,21 +131,29 @@ def probe_ypf(ypf_path):
     """Return YPFInfo for a YPF archive.
 
     Strategy (in order):
-    1. vendored yuri -- full parse; works for most games.
-    2. ypf-repacker.exe -p -- fallback when yuri can't open the file.
-    3. raw header parse -- reads 32-byte YPF header directly; works for Clock Up
-       games (Tera Beppin, Please R Me!) whose name checksums confuse both tools.
+    1. vendored yuri -- tries auto-detect first, then common version overrides
+       (265 for Clock Up bn.ypf, 491 for Mousou, etc.).  Auto-detect fails on
+       Clock Up archives; passing v=265 explicitly works.
+    2. ypf-repacker.exe -p -- fallback when yuri exhausts all version hints.
+    3. raw header parse -- reads 32-byte YPF header directly; last resort.
        Yields version and entry count without any hash validation.
     """
-    # Primary: yuri (full parse)
+    # Primary: yuri with auto-detect then common version overrides
+    sys.path.insert(0, GAME_DIR)
     try:
-        sys.path.insert(0, GAME_DIR)
         from yuri.fileformat import ypf_read
-        with open(ypf_path, "rb") as f:
-            ents, version = ypf_read(f)
-        return YPFInfo(version=version, entry_count=len(ents), tool="yuri")
-    except Exception as exc:
-        print(f"  [probe] yuri failed: {exc}; trying ypf-repacker.exe fallback")
+        VERSION_HINTS = [None, 265, 491, 500, 474, 400, 300]
+        last_exc = None
+        for v in VERSION_HINTS:
+            try:
+                with open(ypf_path, "rb") as f:
+                    ents, real_v = ypf_read(f, v=v) if v is not None else ypf_read(f)
+                return YPFInfo(version=real_v, entry_count=len(ents), tool="yuri")
+            except Exception as exc:
+                last_exc = exc
+        print(f"  [probe] yuri exhausted all version hints; last error: {last_exc}; trying ypf-repacker.exe")
+    except ImportError as exc:
+        print(f"  [probe] yuri not importable: {exc}; trying ypf-repacker.exe fallback")
 
     # Fallback 1: ypf-repacker.exe -p
     if os.path.isfile(YPF_REPACKER):
