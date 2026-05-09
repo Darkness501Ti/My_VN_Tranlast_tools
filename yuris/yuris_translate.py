@@ -282,3 +282,27 @@ def _parse_ypf_repacker_probe(stdout):
             count = int(m.group(1))
 
     return version, count
+
+
+def find_script_key(exe_path):
+    """Find the 4-byte YBN script_key embedded in game.exe near the b'YSER' magic.
+
+    Pattern (from GARbro FindYser): the 4 bytes immediately following YSER are
+    the script_key for all .ybn entries in the game's archives.
+
+    Note: yuri's defaults (KEY_200=0x07B4024A, KEY_290=0xD36FAC96) often work
+    without YSER lookup, but extracting from .exe is more reliable when present.
+    """
+    with open(exe_path, "rb") as f:
+        blob = f.read()
+    idx = blob.find(b"YSER")
+    if idx == -1:
+        raise RuntimeError(
+            f"YSER magic not found in {exe_path}. "
+            "v500+ exes may relocate it; known-plaintext attack on yst00000.ybn "
+            "is not implemented in v1."
+        )
+    key = blob[idx + 4 : idx + 8]
+    if len(key) != 4:
+        raise RuntimeError(f"Truncated YSER region at offset {idx} in {exe_path}")
+    return key
