@@ -314,3 +314,55 @@ def find_script_key(exe_path):
 
 sys.path.insert(0, GAME_DIR)
 from ybn_patcher import ybn_load_strings, ybn_patch_strings  # noqa: E402
+
+
+# ---------------------------------------------------------------------------
+# YPF archive creation
+# ---------------------------------------------------------------------------
+
+def create_patch_ypf(src_dir, out_ypf, version):
+    """Build a YPF archive from src_dir at the given version.
+
+    Tries vendored yuri first; falls back to ypf-repacker.exe.
+    src_dir contents are added as YPF entries with paths relative to src_dir,
+    using backslash separators (YPF convention).
+    """
+    # Try yuri (API: ypf_make(ents, v, f) where ents = list of (name, k, c, data, ul))
+    sys.path.insert(0, GAME_DIR)
+    try:
+        from yuri.fileformat import ypf_make
+        entries = []
+        for root, _, files in os.walk(src_dir):
+            for fname in sorted(files):
+                full = os.path.join(root, fname)
+                rel = os.path.relpath(full, src_dir).replace(os.sep, "\\")
+                with open(full, "rb") as f:
+                    data = f.read()
+                # (name, k=0, c=1=compress-on-write, data, ul=uncompressed_len)
+                entries.append((rel, 0, 1, data, len(data)))
+        with open(out_ypf, "wb") as f:
+            ypf_make(entries, version, f)
+        return "yuri"
+    except Exception as exc:
+        print(f"  [create] yuri failed: {exc}; trying ypf-repacker.exe fallback")
+
+    # Fallback: ypf-repacker.exe -c <folder> -v <version_str>
+    # The repacker uses float notation: version 491 -> "0.491"
+    if not os.path.isfile(YPF_REPACKER):
+        raise RuntimeError("both yuri and ypf-repacker.exe unavailable")
+    version_str = f"0.{version}"
+    r = subprocess.run(
+        [YPF_REPACKER, "-c", src_dir, "-v", version_str],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if r.returncode != 0:
+        raise RuntimeError(
+            f"both creators failed: {(r.stderr or r.stdout).strip()[:300]}"
+        )
+    # ypf-repacker.exe -c writes <src_dir>.ypf next to src_dir; rename to out_ypf
+    default_out = src_dir.rstrip(os.sep) + ".ypf"
+    if os.path.isfile(default_out) and os.path.abspath(default_out) != os.path.abspath(out_ypf):
+        if os.path.exists(out_ypf):
+            os.remove(out_ypf)
+        shutil.move(default_out, out_ypf)
+    return "ypf-repacker.exe"
