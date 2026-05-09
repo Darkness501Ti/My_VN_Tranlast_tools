@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """YU-RIS VN Auto-Translation Tool (yuri + ypf-repacker.exe + Sugoi)."""
 
+import argparse
 import os
 import sys
 import unicodedata
@@ -473,3 +474,176 @@ def next_patch_slot(directory):
                 if n > highest:
                     highest = n
     return f"update{highest + 1}.ypf"
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="One-click YU-RIS VN translator. Run from inside the game folder.",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("patch", "zzz", "replace"),
+        default="patch",
+        help=(
+            "patch (default) = drop update<N>.ypf alongside originals. "
+            "zzz = drop zzz_eng.ypf (alphabetical-last load order). "
+            "replace = repack original archive in-place (backs up to .jp_backup)."
+        ),
+    )
+    args = parser.parse_args()
+
+    game_dir    = GAME_DIR
+    game_name   = os.path.basename(game_dir)
+    eng_dir     = os.path.join(game_dir, f"{game_name}_ENG_ver")
+    work_dir    = os.path.join(game_dir, "_yuris_work")
+
+    print(f"\n=== YU-RIS Auto-Translation Tool ===")
+    print(f"Game folder : {game_dir}")
+    print(f"Mode        : {args.mode}")
+
+    # [1/8] Locate tools
+    print("\n[1/8] Locating tools...")
+    sys.path.insert(0, GAME_DIR)
+    try:
+        import yuri  # noqa: F401
+        print("  yuri          : OK (vendored)")
+    except Exception as exc:
+        print(f"  ERROR: yuri import failed: {exc}")
+        sys.exit(1)
+    if not os.path.isfile(YPF_REPACKER):
+        print(f"  WARN: ypf-repacker.exe missing at {YPF_REPACKER} (fallback unavailable)")
+    else:
+        print(f"  ypf-repacker  : OK")
+    try:
+        requests.get(SUGOI_URL, timeout=3)
+        print(f"  Sugoi server  : OK")
+    except Exception:
+        print(f"  ERROR: Sugoi server not reachable at {SUGOI_URL}")
+        sys.exit(1)
+
+    # [2/8] Detect game layout
+    print("\n[2/8] Detecting game layout...")
+    layout = detect_layout(game_dir)
+    try:
+        scripts_archive = find_scripts_archive(game_dir)
+        game_exe = find_game_exe(game_dir)
+    except FileNotFoundError as exc:
+        print(f"  ERROR: {exc}")
+        sys.exit(1)
+    print(f"  layout        : {layout}")
+    print(f"  scripts       : {scripts_archive}")
+    print(f"  game.exe      : {game_exe}")
+
+    # [3/8] Probe + script_key
+    print("\n[3/8] Probing scripts archive and script_key...")
+    info = probe_ypf(scripts_archive)
+    print(f"  YPF version   : {info.version} (entries={info.entry_count}, tool={info.tool})")
+    try:
+        script_key = find_script_key(game_exe)
+        print(f"  script_key    : {script_key.hex()}")
+    except RuntimeError as exc:
+        print(f"  WARN: {exc}")
+        print(f"  Continuing with default key (yuri's hardcoded KEY_290 is used internally)")
+        script_key = b"\x00\x00\x00\x00"  # placeholder — patcher uses internal key
+
+    # [4/8] Copy game to ENG_ver
+    print(f"\n[4/8] Copying game to {os.path.basename(eng_dir)}/...")
+    if os.path.exists(eng_dir):
+        print("  removing old ENG copy...")
+        shutil.rmtree(eng_dir)
+    shutil.copytree(
+        game_dir, eng_dir,
+        ignore=shutil.ignore_patterns(f"{game_name}_ENG_ver", "_yuris_work"),
+    )
+    print("  copied.")
+
+    # [5/8] Extract YBNs to work_dir/extracted
+    print("\n[5/8] Extracting YBN scripts...")
+    if os.path.exists(work_dir):
+        shutil.rmtree(work_dir)
+    extracted = os.path.join(work_dir, "extracted")
+    patched   = os.path.join(work_dir, "patched")
+    extract_ypf(scripts_archive, extracted)
+
+    yst_files = []   # translatable yst*.ybn
+    sys_files = []   # system .ybn (ysc/ysv/ysl/yst_list/yst.ybn) — copy through
+    for root, _, files in os.walk(extracted):
+        for f in files:
+            full = os.path.join(root, f)
+            low = f.lower()
+            if low.endswith(".ybn"):
+                if low.startswith("yst") and low[3:4].isdigit():
+                    yst_files.append(full)
+                else:
+                    sys_files.append(full)
+    print(f"  extracted {len(yst_files)} yst*.ybn (translatable)")
+    print(f"  + {len(sys_files)} system .ybn (copy-through)")
+    if not yst_files:
+        print("  ERROR: no yst*.ybn extracted. Wrong archive selected?")
+        sys.exit(1)
+
+    # [6/8] Translate each yst*.ybn; copy system files through
+    print(f"\n[6/8] Translating via Sugoi (BATCH_SIZE={BATCH_SIZE})...")
+    fail_count = 0
+    total_strings = 0
+    for ybn in yst_files:
+        rel = os.path.relpath(ybn, extracted)
+        out_path = os.path.join(patched, rel)
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        try:
+            n = translate_ybn(ybn, out_path, script_key)
+            total_strings += n
+            print(f"  {rel}: {n} strings")
+        except Exception as exc:
+            fail_count += 1
+            print(f"  [warn] {rel}: {exc}")
+            shutil.copy2(ybn, out_path)
+
+    # Copy system files unchanged
+    for sf in sys_files:
+        rel = os.path.relpath(sf, extracted)
+        out_path = os.path.join(patched, rel)
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        shutil.copy2(sf, out_path)
+
+    print(f"  total: {total_strings} strings translated, {fail_count} files failed")
+
+    # [7/8] Build patch YPF and place it
+    print(f"\n[7/8] Building patch archive (mode={args.mode})...")
+    patch_dest_dir = (
+        os.path.join(eng_dir, "pac") if layout == "pac" else eng_dir
+    )
+    os.makedirs(patch_dest_dir, exist_ok=True)
+
+    if args.mode == "patch":
+        slot_name = next_patch_slot(patch_dest_dir)
+        out_ypf = os.path.join(patch_dest_dir, slot_name)
+    elif args.mode == "zzz":
+        out_ypf = os.path.join(patch_dest_dir, "zzz_eng.ypf")
+    else:  # replace
+        original_name = os.path.basename(scripts_archive)
+        out_ypf = os.path.join(patch_dest_dir, original_name)
+        backup = out_ypf + ".jp_backup"
+        if os.path.exists(out_ypf) and not os.path.exists(backup):
+            shutil.move(out_ypf, backup)
+            print(f"  backed up original to {os.path.basename(backup)}")
+
+    create_patch_ypf(patched, out_ypf, info.version)
+    print(f"  wrote {os.path.basename(out_ypf)} ({os.path.getsize(out_ypf)//1024} KB)")
+
+    # [8/8] Cleanup
+    print("\n[8/8] Cleanup...")
+    shutil.rmtree(work_dir, ignore_errors=True)
+    launcher = os.path.basename(game_exe)
+    rel_patch = os.path.relpath(out_ypf, eng_dir)
+    print(f"\n{'='*42}")
+    print(f" DONE!")
+    print(f" Play from : {os.path.basename(eng_dir)}\\{launcher}")
+    print(f" Patch     : {rel_patch}")
+    if args.mode == "patch":
+        print(f" If English doesn't appear in-game, re-run with: --mode=zzz then --mode=replace")
+    print(f"{'='*42}\n")
+
+
+if __name__ == "__main__":
+    main()
