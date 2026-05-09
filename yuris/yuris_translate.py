@@ -5,6 +5,7 @@ import os
 import sys
 import unicodedata
 import glob
+import re
 import requests
 
 GAME_DIR    = os.path.dirname(os.path.abspath(__file__))
@@ -452,3 +453,23 @@ def translate_ybn(ybn_in, ybn_out, script_key):
     with open(ybn_out, "wb") as f:
         f.write(rebuilt)
     return len(jp_texts)
+
+
+_UPDATE_RE = re.compile(r"^update(\d+)\.ypf$", re.IGNORECASE)
+
+
+def next_patch_slot(directory):
+    """Return 'update<N>.ypf' where N is one greater than the highest existing slot.
+
+    Skips gaps intentionally — never reuses a deleted slot to avoid load-order surprises.
+    Returns 'update1.ypf' if no update slots exist.
+    """
+    highest = 0
+    if os.path.isdir(directory):
+        for name in os.listdir(directory):
+            m = _UPDATE_RE.match(name)
+            if m:
+                n = int(m.group(1))
+                if n > highest:
+                    highest = n
+    return f"update{highest + 1}.ypf"
