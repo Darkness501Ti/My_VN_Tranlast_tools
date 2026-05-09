@@ -1,5 +1,5 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal
 
 set "SUGOI_DIR=D:\game_install\501Translate\tools\sugoi"
 set "SUGOI_BAT=%SUGOI_DIR%\startServer-CUDA.bat"
