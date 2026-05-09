@@ -119,6 +119,7 @@ def find_game_exe(game_dir):
 # ---------------------------------------------------------------------------
 
 import re
+import shutil
 import subprocess
 from collections import namedtuple
 
@@ -175,6 +176,82 @@ def probe_ypf(ypf_path):
         raise RuntimeError(f"Not a YPF archive or file too small: {ypf_path}")
     _, version, entry_count, _, _ = _struct.unpack("<4s3I16s", raw)
     return YPFInfo(version=version, entry_count=entry_count, tool="raw-header")
+
+
+# ---------------------------------------------------------------------------
+# YPF version hints (shared by probe_ypf and extract_ypf)
+# ---------------------------------------------------------------------------
+
+_YPF_VERSION_HINTS = [None, 265, 491, 500, 474, 400, 300]
+
+
+def extract_ypf(ypf_path, out_dir):
+    """Extract every entry from ypf_path into out_dir, preserving internal paths.
+
+    Tries vendored yuri first (with version-hint loop); falls back to
+    ypf-repacker.exe if all yuri attempts fail. Returns the tool name used.
+    Raises RuntimeError if both fail.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Primary: yuri with version-hint loop
+    sys.path.insert(0, GAME_DIR)
+    try:
+        from yuri.fileformat import ypf_read
+    except ImportError as exc:
+        print(f"  [extract] yuri import failed: {exc}; trying .exe fallback")
+        ypf_read = None
+
+    if ypf_read is not None:
+        last_exc = None
+        for v in _YPF_VERSION_HINTS:
+            try:
+                with open(ypf_path, "rb") as f:
+                    ents, _real_v = (ypf_read(f, v=v) if v is not None
+                                     else ypf_read(f))
+                # ents = [(name, k, c, data, ul), ...]
+                for name, _k, _c, data, _ul in ents:
+                    dest = os.path.join(out_dir, name.replace("\\", os.sep))
+                    os.makedirs(os.path.dirname(dest) or out_dir, exist_ok=True)
+                    with open(dest, "wb") as g:
+                        g.write(data)
+                return "yuri"
+            except Exception as exc:
+                last_exc = exc
+        print(f"  [extract] yuri exhausted version hints; last error: {last_exc}; trying .exe fallback")
+
+    # Fallback: ypf-repacker.exe -e <file>
+    # The exe creates a folder named after the archive stem NEXT TO the .ypf file.
+    # We run it from out_dir but the exe ignores cwd and writes next to the .ypf.
+    # So we find that folder and move/merge its contents into out_dir.
+    if not os.path.isfile(YPF_REPACKER):
+        raise RuntimeError(f"both yuri and ypf-repacker.exe unavailable for {ypf_path}")
+
+    r = subprocess.run(
+        [YPF_REPACKER, "-e", ypf_path],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if r.returncode != 0:
+        raise RuntimeError(
+            f"both extractors failed for {ypf_path}: "
+            f"{(r.stderr or r.stdout).strip()[:300]}"
+        )
+
+    # Locate the folder the exe created (stem of ypf_path, sibling directory)
+    stem = os.path.splitext(os.path.basename(ypf_path))[0]
+    exe_out = os.path.join(os.path.dirname(ypf_path), stem)
+    if os.path.isdir(exe_out):
+        # Move all files from exe_out into out_dir, preserving sub-structure
+        for root, dirs, files in os.walk(exe_out):
+            rel = os.path.relpath(root, exe_out)
+            dest_root = os.path.join(out_dir, rel) if rel != "." else out_dir
+            os.makedirs(dest_root, exist_ok=True)
+            for fname in files:
+                src_file = os.path.join(root, fname)
+                dst_file = os.path.join(dest_root, fname)
+                shutil.move(src_file, dst_file)
+        shutil.rmtree(exe_out, ignore_errors=True)
+    return "ypf-repacker.exe"
 
 
 def _parse_ypf_repacker_probe(stdout):
