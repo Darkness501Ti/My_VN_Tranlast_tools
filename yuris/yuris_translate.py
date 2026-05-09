@@ -390,3 +390,65 @@ def translate_batch(texts):
     except Exception as exc:
         print(f"    [warn] batch error: {exc}")
         return texts
+
+
+# ---------------------------------------------------------------------------
+# Per-file YBN translation pipeline
+# ---------------------------------------------------------------------------
+
+def translate_ybn(ybn_in, ybn_out, script_key):
+    """Translate JP strings in one YBN file. Returns count of strings translated.
+
+    Reads ybn_in, decodes CP932 strings, filters Japanese, batches via Sugoi,
+    ASCII-folds the English, encodes back to CP932, writes byte-correct YBN to
+    ybn_out.  Files with zero Japanese strings produce byte-identical output.
+
+    ybn_load_strings returns list[bytes] (flat, position-indexed).
+    ybn_patch_strings takes list[bytes] of the same length and order.
+    """
+    with open(ybn_in, "rb") as f:
+        raw = f.read()
+    strings = ybn_load_strings(raw, script_key)  # list[bytes], position = index
+
+    # Identify Japanese-bearing positions
+    jp_positions = []   # indices into strings[]
+    jp_texts = []       # decoded text for those positions
+    for i, sjis in enumerate(strings):
+        try:
+            text = sjis.decode("cp932")
+        except UnicodeDecodeError:
+            continue
+        if is_japanese(text):
+            jp_positions.append(i)
+            jp_texts.append(text)
+
+    if not jp_texts:
+        # No-op: identity patch produces byte-identical output
+        rebuilt = ybn_patch_strings(raw, script_key, strings)
+        with open(ybn_out, "wb") as f:
+            f.write(rebuilt)
+        return 0
+
+    # Batch translate via Sugoi in BATCH_SIZE chunks
+    en_texts = []
+    for start in range(0, len(jp_texts), BATCH_SIZE):
+        chunk = jp_texts[start : start + BATCH_SIZE]
+        en_texts.extend(translate_batch(chunk))
+        done = min(start + BATCH_SIZE, len(jp_texts))
+        print(f"      {done}/{len(jp_texts)}")
+
+    # Build new_strings: copy of strings with JP slots replaced by EN CP932
+    new_strings = list(strings)
+    for j, en in enumerate(en_texts):
+        pos = jp_positions[j]
+        folded = ascii_fold(en)
+        try:
+            sjis = folded.encode("cp932")
+        except UnicodeEncodeError:
+            sjis = folded.encode("cp932", errors="replace")
+        new_strings[pos] = sjis
+
+    rebuilt = ybn_patch_strings(raw, script_key, new_strings)
+    with open(ybn_out, "wb") as f:
+        f.write(rebuilt)
+    return len(jp_texts)
