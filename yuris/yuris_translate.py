@@ -306,3 +306,11 @@ def find_script_key(exe_path):
     if len(key) != 4:
         raise RuntimeError(f"Truncated YSER region at offset {idx} in {exe_path}")
     return key
+
+
+# ---------------------------------------------------------------------------
+# YBN string ops (re-exported from ybn_patcher)
+# ---------------------------------------------------------------------------
+
+sys.path.insert(0, GAME_DIR)
+from ybn_patcher import ybn_load_strings, ybn_patch_strings  # noqa: E402
