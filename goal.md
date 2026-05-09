@@ -51,6 +51,7 @@ My_tools/
 | Engine | Status | Notes |
 |--------|--------|-------|
 | LiveMaker | Done | Uses pylivemaker 1.2.1+ (`lmar` + `lmlsb` + `lmpatch`) |
+| YU-RIS | Done | Uses shimamura-sakura/yuri (vendored, YPF I/O) + custom Python YSTB patcher (byte-exact). Patch via update<N>.ypf trick. |
 
 ## Games Waiting to Translate
 
@@ -61,6 +62,9 @@ Located in `D:\game_install\501Translate\waiting to Tranlaste\JP\`
 | Fairy×Cherry | LiveMaker | Ready |
 | KAZEHIME | LiveMaker | Ready (uses game.dat archive) |
 | LoveJ | LiveMaker | Ready |
+| Tera Beppin | YU-RIS | Ready (pac/ layout, bn.ypf v265) |
+| Please R Me! | YU-RIS | Ready (pac/ layout, bn.ypf v265) |
+| Mousou Haruna-san | YU-RIS | Ready (flat layout, ysbin.ypf v491) |
 
 Translated output goes to `D:\game_install\501Translate\waiting to Tranlaste\ENG\` (manual move after `eng_version` is produced).
 
