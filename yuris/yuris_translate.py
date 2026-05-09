@@ -4,6 +4,7 @@
 import os
 import sys
 import unicodedata
+import glob
 
 GAME_DIR    = os.path.dirname(os.path.abspath(__file__))
 SUGOI_URL   = "http://localhost:14366/"
@@ -51,3 +52,56 @@ def ascii_fold(text):
             stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
             out.append(stripped if stripped.isascii() else "?")
     return "".join(out)
+
+
+_EXCLUDE_EXES = ("install.exe", "setup.exe", "inst.exe",
+                 "エンジン設定.exe", "セーブファイル設定.exe")
+
+
+def detect_layout(game_dir):
+    """Return 'pac' if game_dir/pac/ exists with .ypf files, else 'flat'."""
+    pac = os.path.join(game_dir, "pac")
+    if os.path.isdir(pac) and glob.glob(os.path.join(pac, "*.ypf")):
+        return "pac"
+    return "flat"
+
+
+def find_scripts_archive(game_dir):
+    """Locate the YPF that holds .ybn scenario scripts.
+
+    Heuristic: in pac/ layout look for sn.ypf or ysbin.ypf (in that order).
+    In flat layout look for ysbin.ypf at root. Falls back to the largest
+    non-asset YPF (excludes cg/bgm/voice/se/cgsys/op/ed/bn/st/vo).
+    """
+    layout = detect_layout(game_dir)
+    search_dir = os.path.join(game_dir, "pac") if layout == "pac" else game_dir
+    for name in ("sn.ypf", "ysbin.ypf"):
+        p = os.path.join(search_dir, name)
+        if os.path.isfile(p):
+            return p
+    # Fallback heuristic
+    asset_prefixes = ("cg", "bgm", "voice", "vo", "se", "cgsys",
+                       "op", "ed", "bn", "st", "update")
+    candidates = []
+    for ypf in glob.glob(os.path.join(search_dir, "*.ypf")):
+        name = os.path.basename(ypf).lower()
+        if not any(name.startswith(p) for p in asset_prefixes):
+            candidates.append(ypf)
+    if candidates:
+        candidates.sort(key=os.path.getsize, reverse=True)
+        return candidates[0]
+    raise FileNotFoundError(f"No script archive (sn.ypf / ysbin.ypf) in {search_dir}")
+
+
+def find_game_exe(game_dir):
+    """Largest .exe in game_dir excluding installer/setup/engine-config."""
+    exes = []
+    for exe in glob.glob(os.path.join(game_dir, "*.exe")):
+        name = os.path.basename(exe).lower()
+        if name in (e.lower() for e in _EXCLUDE_EXES):
+            continue
+        exes.append(exe)
+    if not exes:
+        raise FileNotFoundError(f"No launcher exe in {game_dir}")
+    exes.sort(key=os.path.getsize, reverse=True)
+    return exes[0]
