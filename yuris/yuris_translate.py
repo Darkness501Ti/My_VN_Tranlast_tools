@@ -105,3 +105,88 @@ def find_game_exe(game_dir):
         raise FileNotFoundError(f"No launcher exe in {game_dir}")
     exes.sort(key=os.path.getsize, reverse=True)
     return exes[0]
+
+
+# ---------------------------------------------------------------------------
+# YPF probing
+# ---------------------------------------------------------------------------
+
+import re
+import subprocess
+from collections import namedtuple
+
+YPFInfo = namedtuple("YPFInfo", "version entry_count tool")
+
+YPF_REPACKER = os.path.join(GAME_DIR, "ypf-repacker.exe")
+
+
+def probe_ypf(ypf_path):
+    """Return YPFInfo for a YPF archive.
+
+    Strategy (in order):
+    1. vendored yuri -- full parse; works for most games.
+    2. ypf-repacker.exe -p -- fallback when yuri can't open the file.
+    3. raw header parse -- reads 32-byte YPF header directly; works for Clock Up
+       games (Tera Beppin, Please R Me!) whose name checksums confuse both tools.
+       Yields version and entry count without any hash validation.
+    """
+    # Primary: yuri (full parse)
+    try:
+        sys.path.insert(0, GAME_DIR)
+        from yuri.fileformat import ypf_read
+        with open(ypf_path, "rb") as f:
+            ents, version = ypf_read(f)
+        return YPFInfo(version=version, entry_count=len(ents), tool="yuri")
+    except Exception as exc:
+        print(f"  [probe] yuri failed: {exc}; trying ypf-repacker.exe fallback")
+
+    # Fallback 1: ypf-repacker.exe -p
+    if os.path.isfile(YPF_REPACKER):
+        r = subprocess.run(
+            [YPF_REPACKER, "-p", ypf_path],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        version, count = _parse_ypf_repacker_probe(r.stdout)
+        if version > 0 and count > 0:
+            return YPFInfo(version=version, entry_count=count, tool="ypf-repacker.exe")
+        print(f"  [probe] ypf-repacker.exe gave no usable data (rc={r.returncode}); trying raw header")
+
+    # Fallback 2: raw 32-byte YPF header (no hash validation)
+    # Layout (little-endian): magic[4] version[4] entry_count[4] hdr_size[4] pad[16]
+    import struct as _struct
+    with open(ypf_path, "rb") as f:
+        raw = f.read(32)
+    if len(raw) < 32 or raw[:4] != b"YPF\x00":
+        raise RuntimeError(f"Not a YPF archive or file too small: {ypf_path}")
+    _, version, entry_count, _, _ = _struct.unpack("<4s3I16s", raw)
+    return YPFInfo(version=version, entry_count=entry_count, tool="raw-header")
+
+
+def _parse_ypf_repacker_probe(stdout):
+    """Extract (version, entry_count) from ypf-repacker.exe -p stdout.
+
+    Observed format (v0.1.0.1):
+        Version: 491
+        Files Count: 149
+
+    Patterns are matched by keyword to be robust against line-order changes.
+    """
+    version = 0
+    count = 0
+
+    # "Version: 491"  (not "v491" — the header line says "YPF-Repacker v0.1.0.1")
+    m = re.search(r"^\s*Version:\s*(\d+)", stdout, re.MULTILINE | re.IGNORECASE)
+    if m:
+        version = int(m.group(1))
+
+    # "Files Count: 149"
+    m = re.search(r"Files\s+Count:\s*(\d+)", stdout, re.IGNORECASE)
+    if m:
+        count = int(m.group(1))
+    else:
+        # Broader fallback: "149 files" / "Entries: 149"
+        m = re.search(r"(\d+)\s*(?:files?|entries|entry)", stdout, re.IGNORECASE)
+        if m:
+            count = int(m.group(1))
+
+    return version, count
