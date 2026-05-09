@@ -5,6 +5,7 @@ import os
 import sys
 import unicodedata
 import glob
+import requests
 
 GAME_DIR    = os.path.dirname(os.path.abspath(__file__))
 SUGOI_URL   = "http://localhost:14366/"
@@ -366,3 +367,26 @@ def create_patch_ypf(src_dir, out_ypf, version):
             os.remove(out_ypf)
         shutil.move(default_out, out_ypf)
     return "ypf-repacker.exe"
+
+
+# ---------------------------------------------------------------------------
+# Sugoi translation (batch HTTP client)
+# ---------------------------------------------------------------------------
+
+def translate_batch(texts):
+    """Send a list of JP strings to Sugoi in one request. Returns list of EN strings.
+    On failure returns the originals so the pipeline can keep going."""
+    try:
+        resp = requests.post(
+            SUGOI_URL,
+            json={"message": "translate sentences", "content": texts},
+            timeout=120,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+        if isinstance(result, list) and len(result) == len(texts):
+            return result
+        return [str(result)] * len(texts)
+    except Exception as exc:
+        print(f"    [warn] batch error: {exc}")
+        return texts
