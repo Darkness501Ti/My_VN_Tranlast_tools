@@ -7,6 +7,8 @@ Drop these files into the game folder, run the bat, get a full English copy in `
 
 ## Files
 
+**Runtime (copy these into the game folder):**
+
 | File | Purpose |
 |------|---------|
 | `translate_yuris.bat` | Entry point — starts Sugoi, installs deps, runs Python script |
@@ -14,7 +16,19 @@ Drop these files into the game folder, run the bat, get a full English copy in `
 | `ybn_patcher.py` | Custom YSTB binary patcher (byte-exact round-trip) |
 | `ypf-repacker.exe` | Bundled fallback for YPF versions yuri can't handle (1.5 MB, MIT) |
 | `DotNetZip.dll` | Required by ypf-repacker.exe (.NET dependency) |
+| `ypf-repacker.exe.config` | .NET config for ypf-repacker.exe |
 | `yuri/` | Vendored shimamura-sakura/yuri package (YPF read/write + YBN parse) |
+| `yuris.md` | This file (user docs) |
+
+**Dev / reference (in `Claude_Yuris/` subfolder, NOT needed in game folder):**
+
+| Path | Purpose |
+|------|---------|
+| `Claude_Yuris/tests/` | pytest suite (48 tests across 10 files) |
+| `Claude_Yuris/LEARNINGS.md` | Hard-won YU-RIS quirks (WORD opcode, typ==3, KEY_290, etc.) |
+| `Claude_Yuris/yuris_research.md` | Initial research brief |
+| `Claude_Yuris/yuri_VERSION.txt` | Vendored yuri commit SHA |
+| `Claude_Yuris/ypf-repacker_VERSION.txt` | ypf-repacker download URL/version |
 
 ## Verified games
 
@@ -98,16 +112,17 @@ Sugoi local AI translator at `http://localhost:14366/`. Same as the LiveMaker to
 ## Tests
 
 ```
-cd D:\game_install\501Translate\My_tools\yuris
+cd D:\game_install\501Translate\My_tools\yuris\Claude_Yuris
 python -m pytest tests/ -v
 ```
 
-47 tests covering: pure helpers (is_japanese, ascii_fold), layout detection, YPF probe/extract/create, script_key, YBN round-trip (byte-exact), translate batch (mocked), translate_ybn, patch_slot. Tests use the actual game files at `D:\game_install\501Translate\waiting to Tranlaste\JP\<game>\`.
+48 tests covering: pure helpers (is_japanese, ascii_fold), layout detection, YPF probe/extract/create, script_key, YBN round-trip (byte-exact), translate batch (mocked), translate_ybn (with WORD-only filter), patch_slot. Tests use the actual game files at `D:\game_install\501Translate\waiting to Tranlaste\JP\<game>\`.
 
 ## References
 
 - Design spec: `../../docs/superpowers/specs/2026-05-09-yuris-translator-design.md`
 - Implementation plan: `../../docs/superpowers/plans/2026-05-09-yuris-translator.md`
-- Research brief: `yuris_research.md`
+- Research brief: `Claude_Yuris/yuris_research.md`
+- YU-RIS engine learnings: `Claude_Yuris/LEARNINGS.md`
 - Reference tool: `../livemaker/`
 - Project context: `../goal.md`

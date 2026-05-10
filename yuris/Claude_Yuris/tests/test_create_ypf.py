@@ -1,5 +1,5 @@
 import sys, os, tempfile, shutil
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from yuris_translate import extract_ypf, create_patch_ypf, probe_ypf, find_scripts_archive
 

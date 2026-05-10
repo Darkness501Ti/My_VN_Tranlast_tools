@@ -1,6 +1,6 @@
 import sys, os, glob, tempfile, shutil
 from unittest import mock
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from yuris_translate import (
     extract_ypf, find_script_key, find_scripts_archive, translate_ybn,

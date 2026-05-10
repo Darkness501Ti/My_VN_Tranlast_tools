@@ -7,7 +7,7 @@ import glob
 import tempfile
 import shutil
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from yuris_translate import extract_ypf, find_script_key, find_scripts_archive
 from ybn_patcher import ybn_load_strings, ybn_patch_strings
