@@ -11,7 +11,7 @@ import requests
 
 GAME_DIR    = os.path.dirname(os.path.abspath(__file__))
 SUGOI_URL   = "http://localhost:14366/"
-BATCH_SIZE  = 128
+BATCH_SIZE  = 1024  # strings per Sugoi request — tune down if GPU OOMs
 
 
 def is_japanese(text):

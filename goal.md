@@ -16,9 +16,9 @@ The tool produces a fully playable English copy in an `eng_version` subfolder in
 - GPU mode (CUDA); CPU fallback bat also exists at same location
 
 **Translation approach: batch_size** (preferred)
-All tools send strings in batches (default `BATCH_SIZE = 32`) in a single API request.
+All tools send strings in batches (default `BATCH_SIZE = 1024`) in a single API request.
 The Sugoi server passes the whole list to `ctranslate2.translate_batch()` in one GPU kernel call.
-Tune `BATCH_SIZE` at the top of each Python script — try 64 or 128 on RTX 5070 Ti.
+Tune `BATCH_SIZE` at the top of each Python script — drop to 256/512 if GPU OOMs on a large script.
 Do NOT use parallel requests (ThreadPoolExecutor) — batch mode is faster and simpler.
 
 The tools auto-start Sugoi if it is not running and poll until the server is ready before translating.
