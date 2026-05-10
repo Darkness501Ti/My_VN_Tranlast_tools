@@ -67,7 +67,7 @@ translate_yuris.bat --mode=replace
 3. **Probe** — read YPF version (auto-tries hint list 265/491/500/...) + script_key (4 bytes near YSER magic in game.exe).
 4. **Copy** — `<game>_ENG_ver/` is a full game copy; everything subsequent happens here.
 5. **Extract** — pull all .ybn files into `_yuris_work/extracted/ysbin/`. yst*.ybn = translatable; ysc/ysv/ysl/yst_list/yst.ybn = system (copy through unchanged).
-6. **Translate** — for each yst*.ybn: parse YSTB header, decrypt with hardcoded KEY_290, decode CP932 strings, batch JP-only strings to Sugoi (BATCH_SIZE=128 per request), ASCII-fold result, encode CP932, recompute resource offsets, re-encrypt sections.
+6. **Translate** — for each yst*.ybn: parse YSTB header, decrypt with hardcoded KEY_290, decode CP932 strings, batch JP-only strings to Sugoi (BATCH_SIZE=1024 per request), ASCII-fold result, encode CP932, recompute resource offsets, re-encrypt sections.
 7. **Build patch YPF** — bundle patched + system .ybn files into `update<N>.ypf` (or zzz_eng.ypf, or replace original).
 8. **Cleanup** — wipe `_yuris_work/`, print play instructions.
 
@@ -77,7 +77,7 @@ Sugoi local AI translator at `http://localhost:14366/`. Same as the LiveMaker to
 - Endpoint: `POST http://localhost:14366/`
 - Body: `{"message": "translate sentences", "content": ["jp1", "jp2", ...]}`
 - Returns: list of English strings, one per input.
-- BATCH_SIZE = 128 strings per request (one GPU `translate_batch()` call per chunk).
+- BATCH_SIZE = 1024 strings per request (one GPU `translate_batch()` call per chunk).
 - Tune at the top of `yuris_translate.py`.
 
 ## Encoding notes

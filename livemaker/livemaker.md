@@ -53,7 +53,7 @@ For each `.lsb` file in `_lm_extract/`:
 1. `lmlsb extractcsv <file.lsb> <file.lsb_raw.csv>` — export text to CSV
 2. Skip if "No text data found" (non-script LSBs)
 3. Find `Original text` column (contains JP source), `Translated text` column (target)
-4. Collect all JP strings, split into chunks of `BATCH_SIZE` (default 128), send each chunk as a list in one `POST http://localhost:14366/` request → get back list of English strings
+4. Collect all JP strings, split into chunks of `BATCH_SIZE` (default 1024), send each chunk as a list in one `POST http://localhost:14366/` request → get back list of English strings
 5. `lmlsb insertcsv --no-backup <file.lsb> <file.lsb_tl.csv>` — patch LSB in-place
 
 **Translation method: batch_size (preferred over parallel requests)**
@@ -78,7 +78,7 @@ requests.post(
 
 The server's `tokenizeBatch()` accepts a list, runs `ctranslate2.translate_batch()` on the whole batch at once, and returns a JSON array. This is the preferred approach — one GPU kernel per batch instead of one per string.
 
-`BATCH_SIZE = 32` is set at the top of `livemaker_translate.py`. Try `64` or `128` on RTX 5070 Ti.
+`BATCH_SIZE = 1024` is set at the top of `livemaker_translate.py`. Drop to 256/512 if GPU OOMs.
 
 Only strings where `is_japanese(text)` is True are included (Hiragana 0x3040–0x30FF, Katakana, CJK 0x4E00–0x9FFF).
 
