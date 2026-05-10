@@ -398,19 +398,28 @@ def translate_batch(texts):
 # Per-file YBN translation pipeline
 # ---------------------------------------------------------------------------
 
-def translate_ybn(ybn_in, ybn_out, script_key):
-    """Translate JP strings in one YBN file. Returns count of strings translated.
+def translate_ybn(ybn_in, ybn_out, script_key, ysc_data=None):
+    """Translate JP dialogue strings in one YBN file. Returns count translated.
 
-    Reads ybn_in, decodes CP932 strings, filters Japanese, batches via Sugoi,
-    ASCII-folds the English, encodes back to CP932, writes byte-correct YBN to
-    ybn_out.  Files with zero Japanese strings produce byte-identical output.
+    Reads ybn_in, extracts only WORD-command dialogue strings (via ysc_data),
+    filters Japanese, batches via Sugoi, ASCII-folds, encodes back to CP932,
+    writes byte-correct YBN to ybn_out.
 
-    ybn_load_strings returns list[bytes] (flat, position-indexed).
-    ybn_patch_strings takes list[bytes] of the same length and order.
+    Parameters
+    ----------
+    ybn_in     : path to input .ybn file
+    ybn_out    : path to write patched .ybn file
+    script_key : YSER key (not used for YSTB encryption; kept for API symmetry)
+    ysc_data   : raw bytes of ysc.ybn from the same archive.  Identifies the
+                 WORD opcode so only dialogue strings are translated.  When None,
+                 falls back to typ==3 (legacy) — kept for test backward compat.
+
+    ybn_load_strings and ybn_patch_strings are called with the same ysc_data so
+    they operate on the same set of arg records.
     """
     with open(ybn_in, "rb") as f:
         raw = f.read()
-    strings = ybn_load_strings(raw, script_key)  # list[bytes], position = index
+    strings = ybn_load_strings(raw, script_key, ysc_data)  # list[bytes], position = index
 
     # Identify Japanese-bearing positions
     jp_positions = []   # indices into strings[]
@@ -426,7 +435,7 @@ def translate_ybn(ybn_in, ybn_out, script_key):
 
     if not jp_texts:
         # No-op: identity patch produces byte-identical output
-        rebuilt = ybn_patch_strings(raw, script_key, strings)
+        rebuilt = ybn_patch_strings(raw, script_key, strings, ysc_data)
         with open(ybn_out, "wb") as f:
             f.write(rebuilt)
         return 0
@@ -450,7 +459,7 @@ def translate_ybn(ybn_in, ybn_out, script_key):
             sjis = folded.encode("cp932", errors="replace")
         new_strings[pos] = sjis
 
-    rebuilt = ybn_patch_strings(raw, script_key, new_strings)
+    rebuilt = ybn_patch_strings(raw, script_key, new_strings, ysc_data)
     with open(ybn_out, "wb") as f:
         f.write(rebuilt)
     return len(jp_texts)
@@ -582,6 +591,23 @@ def main():
         print("  ERROR: no yst*.ybn extracted. Wrong archive selected?")
         sys.exit(1)
 
+    # Load ysc.ybn once — needed to identify WORD opcode for each game.
+    # ysc.ybn is extracted alongside the yst*.ybn files.
+    ysc_data = None
+    for root, _, files in os.walk(extracted):
+        for f in files:
+            if f.lower() == "ysc.ybn":
+                ysc_path = os.path.join(root, f)
+                with open(ysc_path, "rb") as yf:
+                    ysc_data = yf.read()
+                print(f"  ysc.ybn       : {os.path.relpath(ysc_path, extracted)}")
+                break
+        if ysc_data is not None:
+            break
+    if ysc_data is None:
+        print("  WARN: ysc.ybn not found in extracted archive; "
+              "falling back to typ==3 string detection (may translate identifiers).")
+
     # [6/8] Translate each yst*.ybn; copy system files through
     print(f"\n[6/8] Translating via Sugoi (BATCH_SIZE={BATCH_SIZE})...")
     fail_count = 0
@@ -591,7 +617,7 @@ def main():
         out_path = os.path.join(patched, rel)
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         try:
-            n = translate_ybn(ybn, out_path, script_key)
+            n = translate_ybn(ybn, out_path, script_key, ysc_data)
             total_strings += n
             print(f"  {rel}: {n} strings")
         except Exception as exc:
