@@ -32,7 +32,16 @@ My_tools/
 │   ├── livemaker.md         ← how the LiveMaker tool works
 │   ├── translate_livemaker.bat
 │   └── livemaker_translate.py
-└── <engine_name>/           ← future engines go here (e.g. kirikiri, nscripter, rpgmaker)
+├── ail/                     ← Ail Soft engine (アイル / ail-soft.com)
+│   ├── ail.md               ← user docs
+│   ├── translate_ail.bat    ← entry point
+│   ├── ail_translate.py     ← orchestrator (12-step pipeline)
+│   ├── ail_lzss.py          ← Ail-LZSS codec (custom variant) + archive I/O
+│   └── Claude_Ail/          ← dev / RE notes (NOT shipped to game folders)
+│       ├── kouhouDL_research.md ← format spec writeup
+│       ├── LEARNINGS.md     ← five engine gotchas + fixes
+│       └── analyze_*.py / test_*.py / probe_*.py / etc.
+└── <engine_name>/           ← future engines go here (e.g. nscripter, rpgmaker)
     ├── <engine>.md
     ├── translate_<engine>.bat
     └── translate_<engine>.py
@@ -52,6 +61,7 @@ My_tools/
 |--------|--------|-------|
 | LiveMaker | Done | Uses pylivemaker 1.2.1+ (`lmar` + `lmlsb` + `lmpatch`) |
 | YU-RIS | Done | Uses shimamura-sakura/yuri (vendored, YPF I/O) + custom Python YSTB patcher (byte-exact). Patch via update<N>.ypf trick. |
+| Ail Soft | Done | Ail proprietary engine (アイル / ail-soft.com). Custom LZSS-compressed `sall.snl`. RE'd from GARbro `Ail/DatOpener`. In-place half-width ASCII replacement preserves all offset references. **All-literal LZSS encoding required** (engine validator rejects back-ref encoder). **Multi-cluster string-region detection** (median-gap heuristic) catches scenes with interleaved bytecode + strings. **Voice-safe skip rules** preserve scene tags (after `a04_`-style ASCII prefix) and speaker labels (`【XXX】`) in Japanese — newer engine (2014+) uses these as voice lookup keys. Tested in-game with voice on kouhouDL (VNDB v378) and sakurakoDL. |
 
 ## Games Waiting to Translate
 
